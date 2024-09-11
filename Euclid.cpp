@@ -10,12 +10,12 @@ int euclid_algoritm(int a, int b){
     int _a = a < 0 ? -a : a;
     int _b = b < 0 ? -b : b; 
 
-    while(b != 0){
-        int tmp = b;
-        b = a % b;
-        a = tmp;
+    while(_b != 0){
+        int tmp = _b;
+        _b = _a % _b;
+        _a = tmp;
     }
-    return a;
+    return _a;
 
 }
 
