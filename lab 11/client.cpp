@@ -1,113 +1,53 @@
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-#include <fstream>
-#include <iostream>
+#include <unistd.h>
+#include <arpa/inet.h>
 
 #define PORT 8080
-
-std::string name;
-int sockfd;
-char readbuf[1024];
-char writebuf[1024];
-
-std::ofstream outLog("outgoing.log", std::ios::app);
-std::ofstream inLog("incoming.log", std::ios::app);
-
-void* ThreadWrite(void* arg) {
-    while (true) {
-        std::string userInput;
-
-        std::getline(std::cin, userInput);
-
-        if (userInput.length() > sizeof(readbuf) - name.length() - 2) {
-            userInput = userInput.substr(0, sizeof(readbuf) - name.length() - 2);
-        }
-
-        std::string message = name + " " + userInput;
-
-        if (outLog.is_open()) {
-            outLog << message << std::endl;
-        }
-
-        if (send(sockfd, message.c_str(), message.length() + 1, 0) == -1) { 
-            perror("send");
-            exit(1);
-        }
-    }
-    return nullptr;
-}
-
-void* ThreadRead(void* arg) {
-    while (true) {
-        memset(readbuf, 0, sizeof(readbuf)); 
-
-        int bytes_received = recv(sockfd, readbuf, sizeof(readbuf), 0);
-        if (bytes_received <= 0) {
-            perror("recv");
-            exit(1);
-        }
-
-        std::string receivedMessage = readbuf;
-
-        if (inLog.is_open()) {
-            inLog << receivedMessage << std::endl;
-        }
-
-        std::cout << receivedMessage << std::endl;
-    }
-    return nullptr;
-}
+#define BUFFER_SIZE 1024
 
 int main() {
-    struct sockaddr_in sock;
+    int sockfd;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
 
-    if (!outLog.is_open() || !inLog.is_open()) {
-        std::cerr << "Error opening log files" << std::endl;
-        return 1;
-    }
-
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
+    // Creating socket
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    std::cout << "Enter your name: ";
-    std::getline(std::cin, name);
-    name += ":";
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
 
-    sock.sin_family = AF_INET;
-    sock.sin_port = htons(PORT);
-    if (inet_aton("127.0.0.1", &sock.sin_addr) == 0) {
-        perror("inet_aton");
-        exit(1);
-    }
-
-    if (connect(sockfd, (struct sockaddr*)&sock, sizeof(sock)) == -1) {
+    // Connecting to the server
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("connect");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    if (send(sockfd, name.c_str(), name.length() + 1, 0) == -1) { 
-        perror("send");
-        exit(1);
+    printf("Connected to server.\n");
+
+    while (1) {
+        printf("Enter message: ");
+        fgets(buffer, BUFFER_SIZE, stdin);
+
+        // Send message to server
+        send(sockfd, buffer, strlen(buffer), 0);
+
+        memset(buffer, 0, BUFFER_SIZE);
+        // Receive response from server
+        int bytes_received = recv(sockfd, buffer, BUFFER_SIZE, 0);
+        if (bytes_received <= 0) {
+            printf("Server disconnected.\n");
+            break;
+        }
+
+        printf("Server response: %s\n", buffer);
     }
 
-    pthread_t threadwrite, threadread;
-    pthread_create(&threadwrite, nullptr, ThreadWrite, nullptr);
-    pthread_create(&threadread, nullptr, ThreadRead, nullptr);
-    pthread_join(threadwrite, nullptr);
-    pthread_join(threadread, nullptr);
-
-    outLog.close();
-    inLog.close();
     close(sockfd);
     return 0;
 }
